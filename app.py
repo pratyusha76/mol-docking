@@ -61,6 +61,7 @@ def render_3d_viewer(pdb_str, unique_key, ligand_smiles=None, style="cartoon", h
     """Generates an inline HTML/JS canvas containing py3Dmol for 3D visualization."""
     style_opts = f"{{ {style}: {{color: 'spectrum'}} }}"
     
+    ligand_textarea = ""
     ligand_js = ""
     if ligand_smiles:
         mol = Chem.MolFromSmiles(ligand_smiles)
@@ -69,29 +70,35 @@ def render_3d_viewer(pdb_str, unique_key, ligand_smiles=None, style="cartoon", h
             try:
                 AllChem.EmbedMolecule(mol)
                 mol_block = Chem.MolToMolBlock(mol)
-                cleaned_block = mol_block.replace('\n', '\\n').replace('\r', '')
+                ligand_textarea = f'<textarea id="ligand_data_{unique_key}" style="display:none;">{mol_block}</textarea>'
                 ligand_js = f"""
-                var ligand_mol = msv.addModel(`{cleaned_block}`, "sdf");
-                msv.setStyle({{model: ligand_mol}}, {{stick: {{colorscheme: 'cyanCarbon'}} }});
+                var ligandData = document.getElementById('ligand_data_{unique_key}').value;
+                var ligand_mol = msv.addModel(ligandData, "sdf");
+                msv.setStyle({{model: 1}}, {{stick: {{colorscheme: 'cyanCarbon'}} }});
                 """
             except Exception:
                 pass 
 
-    cleaned_pdb = pdb_str.replace('\n', '\\n').replace('\r', '')
     viewer_id = f"3d_viewer_{unique_key}"
     
     html_content = f"""
     <div id="{viewer_id}" style="height: {height}px; width: 100%; position: relative; background-color: #111217;"></div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/3dmol/2.0.4/3Dmol-min.js"></script>
+    <textarea id="pdb_data_{unique_key}" style="display:none;">{pdb_str}</textarea>
+    {ligand_textarea}
+    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
     <script>
         setTimeout(function() {{
             var element = document.getElementById('{viewer_id}');
-            var msv = 3Dmol.createViewer(element, {{backgroundColor: '#111217'}});
-            var protein_mol = msv.addModel(`{cleaned_pdb}`, "pdb");
-            msv.setStyle({{model: protein_mol}}, {style_opts});
-            {ligand_js}
-            msv.zoomTo();
-            msv.render();
+            var lib3d = window.$3Dmol || window.3Dmol;
+            if (lib3d) {{
+                var msv = lib3d.createViewer(element, {{backgroundColor: '#111217'}});
+                var pdbData = document.getElementById('pdb_data_{unique_key}').value;
+                var protein_mol = msv.addModel(pdbData, "pdb");
+                msv.setStyle({{model: 0}}, {style_opts});
+                {ligand_js}
+                msv.zoomTo();
+                msv.render();
+            }}
         }}, 50);
     </script>
     """
