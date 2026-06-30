@@ -96,7 +96,7 @@ with main_col2:
                 
                 st.markdown("### Estimated Binding Affinities")
                 st.dataframe({
-                    "Mode":,
+                    "Mode": [1, 2, 3],  # Fixed the syntax error here
                     "Affinity (kcal/mol)": [-7.4, -6.9, -6.2],
                     "Dist from RMSD l.b.": [0.0, 1.42, 2.11],
                     "Dist from RMSD u.b.": [0.0, 2.34, 3.89]
