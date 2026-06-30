@@ -71,7 +71,7 @@ def render_3d_viewer(pdb_str, unique_key, ligand_smiles=None, style="cartoon", h
                 mol_block = Chem.MolToMolBlock(mol)
                 cleaned_block = mol_block.replace('\n', '\\n').replace('\r', '')
                 ligand_js = f"""
-                var ligand_mol = msv.addModel({cleaned_block}, "sdf");
+                var ligand_mol = msv.addModel(`{cleaned_block}`, "sdf");
                 msv.setStyle({{model: ligand_mol}}, {{stick: {{colorscheme: 'cyanCarbon'}} }});
                 """
             except Exception:
@@ -81,16 +81,18 @@ def render_3d_viewer(pdb_str, unique_key, ligand_smiles=None, style="cartoon", h
     viewer_id = f"3d_viewer_{unique_key}"
     
     html_content = f"""
-    <div id="{viewer_id}" style="height: {height}px; width: 100%; position: relative;"></div>
-    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+    <div id="{viewer_id}" style="height: {height}px; width: 100%; position: relative; background-color: #111217;"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/3dmol/2.0.4/3Dmol-min.js"></script>
     <script>
-        var element = document.getElementById('{viewer_id}');
-        var msv = $3Dmol.createViewer(element, {{backgroundColor: '#111217'}});
-        var protein_mol = msv.addModel({cleaned_pdb}, "pdb");
-        msv.setStyle({{model: protein_mol}}, {style_opts});
-        {ligand_js}
-        msv.zoomTo();
-        msv.render();
+        setTimeout(function() {{
+            var element = document.getElementById('{viewer_id}');
+            var msv = 3Dmol.createViewer(element, {{backgroundColor: '#111217'}});
+            var protein_mol = msv.addModel(`{cleaned_pdb}`, "pdb");
+            msv.setStyle({{model: protein_mol}}, {style_opts});
+            {ligand_js}
+            msv.zoomTo();
+            msv.render();
+        }}, 50);
     </script>
     """
     components.html(html_content, height=height+10)
@@ -188,38 +190,36 @@ else:
             smiles_in = st.text_input("Paste SMILES string here:", value="CC(=O)NC1=CC=C(O)C=C1")
             if smiles_in:
                 st.session_state.smiles = smiles_in
-                mol = Chem.MolFromSmiles(smiles_in)
         else:
             uploaded_file = st.file_uploader("Choose structural file", type=["sdf", "mol2"])
             if uploaded_file is not None:
                 st.session_state.smiles = "CC(=O)NC1=CC=C(O)C=C1" 
-                mol = Chem.MolFromSmiles(st.session_state.smiles)
                 st.info("File uploaded successfully. Calculated structural data displayed below.")
-            else:
-                mol = None
 
-        if st.session_state.smiles and 'mol' in locals() and mol:
-            # Safe 2D Topology Rendering
-            st.subheader("2D Ligand Topology")
-            if RDKIT_DRAW_AVAILABLE:
-                try:
-                    img = Draw.MolToImage(mol, size=(300, 300))
-                    st.image(img, caption="Chemical Structure Graph", use_container_width=False)
-                except Exception as draw_err:
-                    st.error(f"Could not render 2D image: {draw_err}")
-            else:
-                st.warning("⚠️ 2D Topology graphic rendering is offline due to missing server display drivers.")
-                st.info("💡 Ensure `packages.txt` with `libxrender1` is pushed to your GitHub repo root.")
-            
-            # Calculate automatic chemical descriptors using RDKit
-            st.session_state.ligand_props = {
-                "Molecular Weight (g/mol)": round(Descriptors.ExactMolWt(mol), 3),
-                "LogP (Partition Coefficient)": round(Descriptors.MolLogP(mol), 3),
-                "Hydrogen Bond Donors": Lipinski.NumHDonors(mol),
-                "Hydrogen Bond Acceptors": Lipinski.NumHAcceptors(mol),
-                "Rotatable Bonds": Lipinski.NumRotatableBonds(mol)
-            }
-            st.success("Chemical graph properties calculated cleanly!")
+        if st.session_state.smiles:
+            mol = Chem.MolFromSmiles(st.session_state.smiles)
+            if mol:
+                # Safe 2D Topology Rendering
+                st.subheader("2D Ligand Topology")
+                if RDKIT_DRAW_AVAILABLE:
+                    try:
+                        img = Draw.MolToImage(mol, size=(300, 300))
+                        st.image(img, caption="Chemical Structure Graph", use_container_width=False)
+                    except Exception as draw_err:
+                        st.error(f"Could not render 2D image: {draw_err}")
+                else:
+                    st.warning("⚠️ 2D Topology graphic rendering is offline due to missing server display drivers.")
+                    st.info("💡 Ensure `packages.txt` with `libxrender1` is pushed to your GitHub repo root.")
+                
+                # Calculate automatic chemical descriptors using RDKit
+                st.session_state.ligand_props = {
+                    "Molecular Weight (g/mol)": round(Descriptors.ExactMolWt(mol), 3),
+                    "LogP (Partition Coefficient)": round(Descriptors.MolLogP(mol), 3),
+                    "Hydrogen Bond Donors": Lipinski.NumHDonors(mol),
+                    "Hydrogen Bond Acceptors": Lipinski.NumHAcceptors(mol),
+                    "Rotatable Bonds": Lipinski.NumRotatableBonds(mol)
+                }
+                st.success("Chemical graph properties calculated cleanly!")
 
     with col_l2:
         if st.session_state.ligand_props:
@@ -315,6 +315,4 @@ else:
             st.subheader("Simulation Final Summary")
             summary_metrics = {
                 "Parameter Setting": ["Target System Identifier", "Grid Volumetric Center", "Total Iteration Runtime", "Lipinski Compliant Ligand"],
-                "Value Profile": [f"PDB: {st.session_state.pdb_id}", f"[{center_x}, {center_y}, {center_z}]", "4.82 Seconds", "Yes (0 Violations)"]
-            }
-            st.table(pd.DataFrame(summary_metrics))
+                "Value Profile": [f"PDB: {st.session_state.pdb_id}", f"[{center_x}, {center_y}, {center_z}]", "4
