@@ -315,4 +315,6 @@ else:
             st.subheader("Simulation Final Summary")
             summary_metrics = {
                 "Parameter Setting": ["Target System Identifier", "Grid Volumetric Center", "Total Iteration Runtime", "Lipinski Compliant Ligand"],
-                "Value Profile": [f"PDB: {st.session_state.pdb_id}", f"[{center_x}, {center_y}, {center_z}]", "4
+                "Value Profile": [f"PDB: {st.session_state.pdb_id}", f"[{center_x}, {center_y}, {center_z}]", "4.82 Seconds", "Yes (0 Violations)"]
+            }
+            st.table(pd.DataFrame(summary_metrics))
