@@ -59,10 +59,11 @@ def parse_heteroatoms(pdb_text):
 
 def render_3d_viewer(pdb_str, unique_key, ligand_smiles=None, style="cartoon", height=400):
     """Generates an inline HTML/JS canvas containing py3Dmol for 3D visualization."""
+    # Build clean styling strings for JS injection
     style_opts = f"{{ {style}: {{color: 'spectrum'}} }}"
     
     ligand_textarea = ""
-    ligand_js = ""
+    has_ligand = "false"
     if ligand_smiles:
         mol = Chem.MolFromSmiles(ligand_smiles)
         if mol:
@@ -71,11 +72,7 @@ def render_3d_viewer(pdb_str, unique_key, ligand_smiles=None, style="cartoon", h
                 AllChem.EmbedMolecule(mol)
                 mol_block = Chem.MolToMolBlock(mol)
                 ligand_textarea = f'<textarea id="ligand_data_{unique_key}" style="display:none;">{mol_block}</textarea>'
-                ligand_js = f"""
-                var ligandData = document.getElementById('ligand_data_{unique_key}').value;
-                var ligand_mol = msv.addModel(ligandData, "sdf");
-                msv.setStyle({{model: 1}}, {{stick: {{colorscheme: 'cyanCarbon'}} }});
-                """
+                has_ligand = "true"
             except Exception:
                 pass 
 
@@ -85,21 +82,42 @@ def render_3d_viewer(pdb_str, unique_key, ligand_smiles=None, style="cartoon", h
     <div id="{viewer_id}" style="height: {height}px; width: 100%; position: relative; background-color: #111217;"></div>
     <textarea id="pdb_data_{unique_key}" style="display:none;">{pdb_str}</textarea>
     {ligand_textarea}
-    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/3dmol/2.0.4/3Dmol-min.js"></script>
     <script>
         setTimeout(function() {{
-            var element = document.getElementById('{viewer_id}');
-            var lib3d = window.$3Dmol || window.3Dmol;
-            if (lib3d) {{
-                var msv = lib3d.createViewer(element, {{backgroundColor: '#111217'}});
+            try {{
+                var element = document.getElementById('{viewer_id}');
+                var creator = window.$3Dmol || window.3Dmol;
+                if (!creator) {{
+                    console.error("3Dmol engine script dependency failed to load.");
+                    return;
+                }}
+                
+                var msv = creator.createViewer(element, {{backgroundColor: '#111217'}});
                 var pdbData = document.getElementById('pdb_data_{unique_key}').value;
-                var protein_mol = msv.addModel(pdbData, "pdb");
-                msv.setStyle({{model: 0}}, {style_opts});
-                {ligand_js}
+                
+                if (pdbData && pdbData.trim().length > 0) {{
+                    msv.addModel(pdbData, "pdb");
+                    msv.setStyle({{model: -1}}, {style_opts});
+                }}
+                
+                if ({has_ligand}) {{
+                    var ligandElem = document.getElementById('ligand_data_{unique_key}');
+                    if (ligandElem) {{
+                        var ligandData = ligandElem.value;
+                        if (ligandData && ligandData.trim().length > 0) {{
+                            msv.addModel(ligandData, "sdf");
+                            msv.setStyle({{model: -1}}, {{stick: {{colorscheme: 'cyanCarbon', radius: 0.25}} }});
+                        }}
+                    }}
+                }}
+                
                 msv.zoomTo();
                 msv.render();
+            }} catch (err) {{
+                console.error("WebGL Pipeline Interrupted:", err);
             }}
-        }}, 50);
+        }}, 100);
     </script>
     """
     components.html(html_content, height=height+10)
@@ -210,7 +228,8 @@ else:
                 st.subheader("2D Ligand Topology")
                 if RDKIT_DRAW_AVAILABLE:
                     try:
-                        img = Draw.MolToImage(mol, size=(300, 300))
+                        # Enforce solid high-contrast white canvas background to prevent dark mode transparency issues
+                        img = Draw.MolToImage(mol, size=(300, 300), background=(255, 255, 255))
                         st.image(img, caption="Chemical Structure Graph", use_container_width=False)
                     except Exception as draw_err:
                         st.error(f"Could not render 2D image: {draw_err}")
