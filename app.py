@@ -405,8 +405,7 @@ with col_l2:
                 }}
             </script>
             """
-            components.html(html_content, height=320)
-
+            components.html(html_content, height=320, key=f"ligand_canvas_{hash(st.session_state.smiles)}")
         st.subheader("Calculated Molecular Parameters")
         prop_df = pd.DataFrame(st.session_state.ligand_props.items(), columns=["Molecular Property", "Value"])
         st.table(prop_df)
