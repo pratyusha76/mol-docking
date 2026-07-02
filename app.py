@@ -239,7 +239,7 @@ def render_3d_viewer(pdb_str, ligand_smiles=None, style="cartoon", element_id="c
             mol_block = Chem.MolToMolBlock(mol)
             cleaned_block = mol_block.replace('\n', '\\n').replace('\r', '')
             ligand_js = f"""
-            var ligand_mol = msv.addModel({cleaned_block}, "sdf");
+            var ligand_mol = msv.addModel(`{cleaned_block}`, "sdf");
             msv.setStyle({{model: ligand_mol}}, {{stick: {{colorscheme: 'cyanCarbon', radius: 0.15}} }});
             """
 
@@ -251,7 +251,7 @@ def render_3d_viewer(pdb_str, ligand_smiles=None, style="cartoon", element_id="c
     <script>
         var element = document.getElementById('{element_id}');
         var msv = $3Dmol.createViewer(element, {{backgroundColor: '#111217'}});
-        var protein_mol = msv.addModel({cleaned_pdb}, "pdb");
+        var protein_mol = msv.addModel(`{cleaned_pdb}`, "pdb");
         msv.setStyle({{model: protein_mol}}, {style_opts});
         {ligand_js}
         msv.zoomTo();
@@ -259,7 +259,6 @@ def render_3d_viewer(pdb_str, ligand_smiles=None, style="cartoon", element_id="c
     </script>
     """
     components.html(html_content, height=410)
-
 # --- App State Initialization ---
 if 'pdb_text' not in st.session_state: st.session_state.pdb_text = None
 if 'pure_protein' not in st.session_state: st.session_state.pure_protein = None
