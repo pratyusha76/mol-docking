@@ -383,18 +383,18 @@ with col_l2:
     if st.session_state.ligand_props:
         st.subheader("2D Ligand Topology")
         if st.session_state.smiles:
-            # Safe inline state tracking to bypass the hash bug entirely
+            # Track changes silently in the background
             if 'smiles_counter' not in st.session_state:
                 st.session_state.smiles_counter = 0
                 st.session_state.last_smiles = ""
             
-            # Only increment the counter if the SMILES actually changes
             if st.session_state.smiles != st.session_state.last_smiles:
                 st.session_state.smiles_counter += 1
                 st.session_state.last_smiles = st.session_state.smiles
 
             escaped_smiles = json.dumps(st.session_state.smiles)
             html_content = f"""
+            <!-- Update Token: {st.session_state.smiles_counter} -->
             <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; text-align: center;">
                 <canvas id="ligand-canvas" width="450" height="250" style="max-width: 100%; background-color: #ffffff;"></canvas>
                 <div style="color: #666666; font-size: 14px; font-weight: 500; margin-top: 12px;">Chemical Structure Graph</div>
@@ -414,8 +414,8 @@ with col_l2:
                 }}
             </script>
             """
-            # Uses a stable, clean sequential identifier string
-            components.html(html_content, height=320, key=f"ligand_canvas_{st.session_state.smiles_counter}")
+            # NO KEY ARGUMENT HERE: Bypasses the telemetry tracking crash completely
+            components.html(html_content, height=320)
 
         st.subheader("Calculated Molecular Parameters")
         prop_df = pd.DataFrame(st.session_state.ligand_props.items(), columns=["Molecular Property", "Value"])
