@@ -358,7 +358,7 @@ if st.session_state.pdb_text:
         st.subheader("2D Sequence Topology Diagram")
         if st.session_state.topology_graph:
             # Rendering via Native Streamlit Markdown (Mermaid)
-            st.markdown(f"mermaid\n{st.session_state.topology_graph}\n")
+            st.markdown(f"```mermaid\n{st.session_state.topology_graph}\n```")
         else:
             st.info("No secondary structures configured to display.")
             
