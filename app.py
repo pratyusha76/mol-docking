@@ -4,10 +4,11 @@ import requests
 import math
 from Bio.PDB import PDBParser, PDBIO, Select
 from rdkit import Chem
-from rdkit.Chem import Descriptors, Lipinski, Draw
+from rdkit.Chem import Descriptors, Lipinski
 from rdkit.Geometry import Point3D
 import streamlit.components.v1 as components
 import time
+import json
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(
@@ -398,10 +399,32 @@ with col_l1:
 with col_l2:
     if st.session_state.ligand_props:
         st.subheader("2D Ligand Topology")
-        if 'mol' in locals() and mol:
-            # RDKit will natively generate the visual structural graph you're looking for
-            img = Draw.MolToImage(mol, size=(400, 300))
-            st.image(img, caption="Chemical Structure Graph", use_container_width=True)
+        if st.session_state.smiles:
+            # Safe JSON serialization of the structural string for rendering
+            escaped_smiles = json.dumps(st.session_state.smiles)
+            
+            # Embeds clean canvas matching the "WhatsApp Image 2026-06-30 at 15.59.57.jpeg" structure template
+            html_content = f"""
+            <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; text-align: center; font-family: Arial, sans-serif; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <canvas id="ligand-canvas" width="450" height="250" style="max-width: 100%; background-color: #ffffff;"></canvas>
+                <div style="color: #666666; font-size: 14px; font-weight: 500; margin-top: 12px; letter-spacing: 0.3px;">Chemical Structure Graph</div>
+            </div>
+            <script src="https://unpkg.com/smiles-drawer@1.2.0/dist/smiles-drawer.min.js"></script>
+            <script>
+                try {{
+                    var options = {{ width: 450, height: 250, bondThickness: 2.0, theme: 'light' }};
+                    var smilesDrawer = new SmilesDrawer.Drawer(options);
+                    SmilesDrawer.parse({escaped_smiles}, function(tree) {{
+                        smilesDrawer.draw(tree, 'ligand-canvas', 'light', false);
+                    }}, function(err) {{
+                        console.error("Layout syntax failure: ", err);
+                    }});
+                }} catch(e) {{
+                    console.error("Canvas context generation error: ", e);
+                }}
+            </script>
+            """
+            components.html(html_content, height=330)
 
         st.subheader("Calculated Molecular Parameters")
         prop_df = pd.DataFrame(st.session_state.ligand_props.items(), columns=["Molecular Property", "Value"])
