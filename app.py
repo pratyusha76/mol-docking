@@ -383,7 +383,16 @@ with col_l2:
     if st.session_state.ligand_props:
         st.subheader("2D Ligand Topology")
         if st.session_state.smiles:
-            # FIXED: Uses clean frontend web-rendering via SmilesDrawer instead of broken server-side Draw.MolToImage
+            # Safe inline state tracking to bypass the hash bug entirely
+            if 'smiles_counter' not in st.session_state:
+                st.session_state.smiles_counter = 0
+                st.session_state.last_smiles = ""
+            
+            # Only increment the counter if the SMILES actually changes
+            if st.session_state.smiles != st.session_state.last_smiles:
+                st.session_state.smiles_counter += 1
+                st.session_state.last_smiles = st.session_state.smiles
+
             escaped_smiles = json.dumps(st.session_state.smiles)
             html_content = f"""
             <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; text-align: center;">
@@ -405,12 +414,12 @@ with col_l2:
                 }}
             </script>
             """
-            components.html(html_content, height=320, key=f"ligand_canvas_{hash(st.session_state.smiles)}")
+            # Uses a stable, clean sequential identifier string
+            components.html(html_content, height=320, key=f"ligand_canvas_{st.session_state.smiles_counter}")
+
         st.subheader("Calculated Molecular Parameters")
         prop_df = pd.DataFrame(st.session_state.ligand_props.items(), columns=["Molecular Property", "Value"])
         st.table(prop_df)
-
-st.markdown("---")
 
 # =====================================================================
 # PHASE 3: DOCKING ENGINE & RESULTS CARD
