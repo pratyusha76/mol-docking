@@ -4,10 +4,11 @@ import requests
 import math
 from Bio.PDB import PDBParser, PDBIO, Select
 from rdkit import Chem
-from rdkit.Chem import Descriptors, Lipinski, Draw
+from rdkit.Chem import Descriptors, Lipinski
 from rdkit.Geometry import Point3D
 import streamlit.components.v1 as components
 import time
+import json
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(
@@ -377,9 +378,30 @@ with col_l1:
 with col_l2:
     if st.session_state.ligand_props:
         st.subheader("2D Ligand Topology")
-        if 'mol' in locals() and mol:
-            img = Draw.MolToImage(mol, size=(400, 300))
-            st.image(img, caption="Chemical Structure Graph", use_container_width=True)
+        if st.session_state.smiles:
+            # Client-side canvas assembly using JavaScript SmilesDrawer (100% crash proof)
+            escaped_smiles = json.dumps(st.session_state.smiles)
+            html_content = f"""
+            <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; text-align: center; font-family: Arial, sans-serif;">
+                <canvas id="ligand-canvas" width="450" height="250" style="max-width: 100%; background-color: #ffffff;"></canvas>
+                <div style="color: #666666; font-size: 14px; font-weight: 500; margin-top: 12px;">Chemical Structure Graph</div>
+            </div>
+            <script src="https://unpkg.com/smiles-drawer@1.2.0/dist/smiles-drawer.min.js"></script>
+            <script>
+                try {{
+                    var options = {{ width: 450, height: 250, bondThickness: 2.0, theme: 'light' }};
+                    var smilesDrawer = new SmilesDrawer.Drawer(options);
+                    SmilesDrawer.parse({escaped_smiles}, function(tree) {{
+                        smilesDrawer.draw(tree, 'ligand-canvas', 'light', false);
+                    }}, function(err) {{
+                        console.error(err);
+                    }});
+                }} catch(e) {{
+                    console.error(e);
+                }}
+            </script>
+            """
+            components.html(html_content, height=320)
 
         st.subheader("Calculated Molecular Parameters")
         prop_df = pd.DataFrame(st.session_state.ligand_props.items(), columns=["Molecular Property", "Value"])
