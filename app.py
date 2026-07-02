@@ -4,11 +4,11 @@ import requests
 import math
 from Bio.PDB import PDBParser, PDBIO, Select
 from rdkit import Chem
-from rdkit.Chem import Descriptors, Lipinski, AllChem
+from rdkit.Chem import Descriptors, Lipinski
+from rdkit.Chem import Draw
 from rdkit.Geometry import Point3D
 import streamlit.components.v1 as components
 import time
-import json
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(
@@ -76,6 +76,7 @@ def generate_topology_mermaid(pdb_text):
     elements = []
     current_chain = None
     
+    # Parse HELIX and SHEET records
     for line in pdb_text.splitlines():
         if line.startswith("HELIX"):
             chain = line[19].strip()
@@ -101,10 +102,14 @@ def generate_topology_mermaid(pdb_text):
         return None
         
     display_elements = elements[:8]
+    
+    # Build Mermaid syntax string
     mermaid_str = "graph LR\n"
     for i, el in enumerate(display_elements):
+        # Different shapes for Helix vs Sheet
         shape_start = "([" if el['type'] == "Alpha Helix" else "["
         shape_end = "])" if el['type'] == "Alpha Helix" else "]"
+        
         mermaid_str += f"  N{i}{shape_start}{el['type']}<br>Res {el['start']}-{el['end']}{shape_end}\n"
         if i > 0:
             mermaid_str += f"  N{i-1} --> N{i}\n"
@@ -113,6 +118,7 @@ def generate_topology_mermaid(pdb_text):
         mermaid_str += f"  N_more[[... {len(elements)-8} more structures]]\n"
         mermaid_str += f"  N{len(display_elements)-1} -.-> N_more\n"
         
+    # CSS Styling embedded in Mermaid
     mermaid_str += "  classDef helix fill:#ffb3b3,stroke:#cc0000,stroke-width:2px,color:black;\n"
     mermaid_str += "  classDef sheet fill:#b3d9ff,stroke:#0066cc,stroke-width:2px,color:black;\n"
     
@@ -124,16 +130,21 @@ def generate_topology_mermaid(pdb_text):
 
 def calculate_simulation_docking(pdb_id, smiles, pdb_text, ligand_props, strategy):
     """Simulates realistic docking scores heavily weighted by chosen grid strategy."""
+    
+    # Flat additive modifiers to prevent modulo collisions (guarantees different text/residues)
     strategy_mods = {
         "Scan Cavity (Active Site Boundary Box)": (0, 0.0, 0.0, 0),
         "Target Heteroatoms / Crystallographic Ligand": (137, -1.8, -0.4, 25), 
-        "Blind Global Docking Whole Surface": (251, +2.4, +1.2, 80)            
+        "Blind Global Docking Whole Surface": (251, +2.4, +1.2, 80)           
     }
     
     strat_seed_add, strat_score_mod, strat_dist_mod, residue_skip = strategy_mods.get(strategy, (0, 0.0, 0.0, 0))
+    
+    # Base seed calculation
     base_seed = sum(ord(char) for char in f"{pdb_id.upper()}_{smiles}")
     combined_seed = base_seed + strat_seed_add
     
+    # Calculate variable binding affinity
     base_score = -6.8 - (combined_seed % 20) / 10.0
     if ligand_props:
         base_score -= (ligand_props.get("Molecular Weight (g/mol)", 150) % 15) / 10.0
@@ -146,6 +157,7 @@ def calculate_simulation_docking(pdb_id, smiles, pdb_text, ligand_props, strateg
         next_val = round(energies[-1] + 0.3 + (combined_seed % (i + 2)) * 0.1, 1)
         energies.append(next_val)
         
+    # Extract authentic amino acid environments based on strategy skip offset
     true_residues = []
     current_skip = 0
     
@@ -180,6 +192,7 @@ def calculate_simulation_docking(pdb_id, smiles, pdb_text, ligand_props, strateg
     func_summaries = []
     
     for i in range(4):
+        # Now yields totally different indices based on the active strategy
         idx = (combined_seed + i * 3) % len(vectors_pool)
         interactions.append(vectors_pool[idx])
         func_summaries.append(summaries_pool[idx])
@@ -191,44 +204,51 @@ def calculate_simulation_docking(pdb_id, smiles, pdb_text, ligand_props, strateg
     return base_score, energies, true_residues, interactions, distances, func_summaries
 
 def render_3d_viewer(pdb_str, ligand_smiles=None, style="cartoon", element_id="container", grid_center=None, pose_idx=1):
-    """Generates an inline HTML canvas containing py3Dmol for 3D visualization."""
+    """Generates an inline HTML canvas containing py3Dmol for 3D visualization and dynamically offsets ligand."""
     style_opts = f"{{ {style}: {{color: 'spectrum'}} }}"
-    ligand_js = ""
     
+    ligand_js = ""
     if ligand_smiles:
         mol = Chem.MolFromSmiles(ligand_smiles)
         if mol:
             mol = Chem.AddHs(mol)
+            from rdkit.Chem import AllChem
             AllChem.EmbedMolecule(mol, randomSeed=42)
             
             if grid_center:
                 conf = mol.GetConformer()
                 num_atoms = mol.GetNumAtoms()
                 
+                # Base spatial center
                 cx = sum(conf.GetAtomPosition(i).x for i in range(num_atoms)) / num_atoms
                 cy = sum(conf.GetAtomPosition(i).y for i in range(num_atoms)) / num_atoms
                 cz = sum(conf.GetAtomPosition(i).z for i in range(num_atoms)) / num_atoms
                 
+                # Grid translation
                 dx = grid_center[0] - cx
                 dy = grid_center[1] - cy
                 dz = grid_center[2] - cz
                 
+                # Dynamic Pose Mathematics (Shifts and rotates the molecule based on pose selection)
                 pose_shift_x = (pose_idx - 1) * 2.5 * (-1 if pose_idx % 2 == 0 else 1)
                 pose_shift_y = (pose_idx - 1) * 1.8
                 pose_shift_z = (pose_idx - 1) * 2.2 * (-1 if pose_idx % 3 == 0 else 1)
 
-                angle = (pose_idx - 1) * (math.pi / 3)
+                angle = (pose_idx - 1) * (math.pi / 3) # Rotate ~60 degrees per pose index
                 cos_a = math.cos(angle)
                 sin_a = math.sin(angle)
                 
                 for i in range(num_atoms):
                     pos = conf.GetAtomPosition(i)
+                    # Shift to local origin
                     ox = pos.x - cx
                     oy = pos.y - cy
                     oz = pos.z - cz
+                    # Rotate on Z/Y axes
                     rx = ox * cos_a - oy * sin_a
                     ry = ox * sin_a + oy * cos_a
                     rz = oz
+                    # Translate to grid + apply pose offset
                     conf.SetAtomPosition(i, Point3D(rx + cx + dx + pose_shift_x, ry + cy + dy + pose_shift_y, rz + cz + dz + pose_shift_z))
 
             mol_block = Chem.MolToMolBlock(mol)
@@ -262,6 +282,7 @@ if 'smiles' not in st.session_state: st.session_state.smiles = ""
 if 'ligand_props' not in st.session_state: st.session_state.ligand_props = None
 if 'topology_data' not in st.session_state: st.session_state.topology_data = None
 if 'topology_graph' not in st.session_state: st.session_state.topology_graph = None
+if 'ligand_2d' not in st.session_state: st.session_state.ligand_2d = None
 
 # --- Main Dashboard Header ---
 st.title("🧬 Multi-Phase In Silico Docking Workspace")
@@ -285,6 +306,7 @@ with col1:
             if raw_text:
                 st.session_state.pdb_text = raw_text
                 st.session_state.topology_data = parse_2d_topology(raw_text)
+                # Generate Mermaid.js native diagram
                 st.session_state.topology_graph = generate_topology_mermaid(raw_text)
                 
                 parser = PDBParser(QUIET=True)
@@ -328,7 +350,8 @@ if st.session_state.pdb_text:
             
         st.subheader("2D Sequence Topology Diagram")
         if st.session_state.topology_graph:
-            st.markdown(f"```mermaid\n{st.session_state.topology_graph}\n```")
+            # Rendering via Native Streamlit Markdown (Mermaid)
+            st.markdown(f"mermaid\n{st.session_state.topology_graph}\n")
         else:
             st.info("No secondary structures configured to display.")
             
@@ -372,36 +395,23 @@ with col_l1:
             "Hydrogen Bond Acceptors": Lipinski.NumHAcceptors(mol),
             "Rotatable Bonds": Lipinski.NumRotatableBonds(mol)
         }
+        
+        # --- NEW ADDITION: Generating 2D Ligand Image ---
+        try:
+            st.session_state.ligand_2d = Draw.MolToImage(mol, size=(300, 300))
+        except Exception:
+            st.session_state.ligand_2d = None
+            
         st.success("Chemical graph properties computed dynamically!")
 
 with col_l2:
     if st.session_state.ligand_props:
-        st.subheader("2D Ligand Topology")
-        if st.session_state.smiles:
-            # Safe browser-side web rendering using SmilesDrawer (No Python C++ dependencies)
-            escaped_smiles = json.dumps(st.session_state.smiles)
-            html_content = f"""
-            <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; text-align: center; font-family: Arial, sans-serif;">
-                <canvas id="ligand-canvas" width="450" height="250" style="max-width: 100%; background-color: #ffffff;"></canvas>
-                <div style="color: #666666; font-size: 14px; font-weight: 500; margin-top: 12px;">Chemical Structure Graph</div>
-            </div>
-            <script src="https://unpkg.com/smiles-drawer@1.2.0/dist/smiles-drawer.min.js"></script>
-            <script>
-                try {{
-                    var options = {{ width: 450, height: 250, bondThickness: 2.0, theme: 'light' }};
-                    var smilesDrawer = new SmilesDrawer.Drawer(options);
-                    SmilesDrawer.parse({escaped_smiles}, function(tree) {{
-                        smilesDrawer.draw(tree, 'ligand-canvas', 'light', false);
-                    }}, function(err) {{
-                        console.error(err);
-                    }});
-                }} catch(e) {{
-                    console.error(e);
-                }}
-            </script>
-            """
-            components.html(html_content, height=320)
-
+        
+        # --- NEW ADDITION: Displaying 2D Ligand Image ---
+        if st.session_state.ligand_2d is not None:
+            st.subheader("2D Ligand Structure Diagram")
+            st.image(st.session_state.ligand_2d, width=300)
+            
         st.subheader("Calculated Molecular Parameters")
         prop_df = pd.DataFrame(st.session_state.ligand_props.items(), columns=["Molecular Property", "Value"])
         st.table(prop_df)
@@ -456,7 +466,9 @@ else:
         st.session_state.docking_complete = True
         st.success("Docking calculation runs resolved completely!")
 
+    # Check session state to persist results visually while allowing interaction with the SelectBox
     if st.session_state.get('docking_complete', False):
+        
         top_score, pose_energies, active_res, int_types, dists, summaries = calculate_simulation_docking(
             pdb_id, st.session_state.smiles, st.session_state.pdb_text, st.session_state.ligand_props, grid_strategy
         )
@@ -477,6 +489,7 @@ else:
         
         with res_c1:
             st.metric(label="Top Scoring Pose Binding Affinity", value=f"{top_score} kcal/mol", delta=f"{round(top_score - pose_energies[1], 1)} kcal/mol vs Pose 2")
+            
             st.subheader("Evaluated Conformer Binding Affinities")
             poses_data = {
                 "Pose Index": [1, 2, 3, 4, 5],
@@ -497,8 +510,11 @@ else:
 
         with res_c2:
             st.subheader("Conformer Pose Spatial Viewer")
+            
+            # Interactive Pose Selector Dropdown
             selected_pose = st.selectbox("Select Generated Pose to Visualize", [1, 2, 3, 4, 5], key="pose_selector")
             
+            # Re-render 3D viewer dynamically based on selected pose
             docking_grid_center = (center_x, center_y, center_z)
             render_3d_viewer(
                 st.session_state.pure_protein, 
